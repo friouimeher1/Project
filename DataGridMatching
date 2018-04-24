@@ -1,0 +1,122 @@
+import React, { Component } from 'react'
+import Table from '@target-energysolutions/data-table'
+import { countryListIsoAlpha2 } from 'libs/ListsCountry'
+import { isEmpty } from 'lodash'
+class DataGridMatching extends Component {
+  constructor (props) {
+    super(props)
+    this.getData = this.getData.bind(this)
+  }
+  getData () {
+    const { users } = this.props
+    let userCompetencies = {}
+    let listArray = []
+    for (let keys of users) {
+      for (let subKey in keys) {
+        const countryFound = countryListIsoAlpha2.find(
+          d => d.value === keys['nationality']
+        )
+        if (countryFound) {
+          userCompetencies['nationality'] = countryFound.label
+        }
+        if (
+          typeof keys[subKey] === 'object' &&
+          !keys.hasOwnProperty('experiences')
+        ) {
+          userCompetencies['experiences'] = '5 - 7 YRS'
+        }
+        if (typeof keys[subKey] === 'object' && subKey === 'userCompetencies') {
+          let competencies = keys[subKey]
+          for (let compe in competencies) {
+            const competenciesArray = competencies[compe]
+            if (
+              Array.isArray(competenciesArray) &&
+              competenciesArray.length > 0
+            ) {
+              const dataSkills = competenciesArray.map(item => {
+                return item.competency.competencyTitle.trim()
+              })
+              userCompetencies[compe] = dataSkills.toString()
+            } else {
+              userCompetencies[compe] = ''
+            }
+          }
+        }
+        if (typeof keys[subKey] === 'object' && subKey === 'experiences') {
+          let experiences = keys[subKey]
+          for (let compe in experiences) {
+            const experiencesArray = experiences[compe]
+            if (
+              Array.isArray(experiencesArray) &&
+              experiencesArray.length > 0
+            ) {
+              for (let exp of experiencesArray) {
+                if (exp.currentEmployee === null) {
+                  userCompetencies[compe] = 'unemployed'
+                } else if (exp.currentEmployee === false) {
+                  userCompetencies[compe] = 'unemployed'
+                } else {
+                  userCompetencies[compe] = exp.designationName
+                }
+              }
+            } else {
+              userCompetencies[compe] = 'unemployed'
+            }
+          }
+        }
+        if (typeof keys[subKey] !== 'object') {
+          userCompetencies[subKey] = keys[subKey]
+        }
+      }
+      listArray.push(userCompetencies)
+      userCompetencies = {}
+    }
+    return listArray
+  }
+  configColumns () {
+    const columnsConfig = [
+      {
+        name: 'Full Name',
+        dataKey: 'fullName'
+      },
+      {
+        name: 'Gender',
+        dataKey: 'gender'
+      },
+      {
+        name: 'experiences',
+        dataKey: 'experiences'
+      },
+      {
+        name: 'nationality',
+        dataKey: 'nationality'
+      },
+      {
+        name: 'Competencies',
+        dataKey: 'userCompetencies',
+        width: 400
+      }
+    ]
+    return columnsConfig
+  }
+  selectChange = (rows) => {
+    const { onChecked } = this.props
+    if (!isEmpty(rows)) {
+      const listIds = rows.map(r => r.data.userID)
+      onChecked(listIds)
+    } else onChecked([])
+  }
+  render () {
+    this.getData()
+    return (
+      <Table
+        multiple
+        title="All Positions"
+        columnsConfig={this.configColumns()}
+        data={this.getData()}
+        onRowSelectionChange={this.selectChange}
+      />
+    )
+  }
+}
+export default DataGridMatching
