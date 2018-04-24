@@ -1,0 +1,415 @@
+import React, { Component } from 'react'
+import { compose, graphql, withApollo } from 'react-apollo'
+import { connect } from 'react-redux'
+import {
+  SelectField,
+  Paper,
+  Button,
+  DialogContainer,
+  TabsContainer,
+  Tabs,
+  Tab,
+  FontIcon
+} from 'react-md'
+import { cls } from 'reactutils'
+import { orderBy, isEmpty } from 'lodash'
+import moment from 'moment'
+import { withRouter, Prompt } from 'react-router-dom'
+import { Editor } from 'react-draft-wysiwyg'
+import { toggleTopbar } from '@target-energysolutions/app-shell/src/modules/shell/actions'
+import cx from 'classnames'
+import draftToHtml from 'draftjs-to-html'
+import { convertToRaw, EditorState } from 'draft-js'
+import * as act from 'modules/app/actions'
+import DataGridMatching from './components/Data-grid-Matching'
+import CardsMatching from './components/Cards-matching'
+import Spinner from 'components/spinner'
+import FilterContainer from './components/FilterContainer'
+import Breadcrumb from 'components/breadcrumb'
+import { setQueryVariables } from '../../../modules/recruitment/actions'
+import userProfilesByFilter from 'libs/queries/recruitment/user-profiles-by-filter.gql'
+import jobById from 'libs/queries/recruitment/job-by-id.gql'
+import insertJobScheduling from 'libs/queries/recruitment/insert-job-scheduling.gql'
+import insertJobSchedulingInteraction from 'libs/queries/recruitment/insert-job-scheduling-interaction.gql'
+import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css'
+import imageUrl from 'images/avatar.png'
+import './ManualMatching.scss'
+@withApollo
+@compose(
+  graphql(jobById, {
+    options: ownProps => {
+      const { match: { params: { id } } } = ownProps
+      return {
+        variables: {
+          id
+        }
+      }
+    },
+    props: response => {
+      return { graphqlJob: response.data }
+    }
+  }),
+  graphql(insertJobScheduling, { name: 'insertJobSchedulingMutate' }),
+  graphql(insertJobSchedulingInteraction, {
+    name: 'insertJobSchedulingInteractionMutate'
+  })
+)
+@connect(
+  ({ filters, recruitment }) => ({
+    filters: filters.recruitment.filters,
+    recruitment
+  }),
+  {
+    addToast: act.addToast,
+    toggleTopbar,
+    setQueryVariables
+  }
+)
+@withRouter
+class ManualMatching extends Component {
+  constructor (props) {
+    super(props)
+    this.state = {
+      view: 'Cards View',
+      filter: 'Newest First',
+      items: [],
+      showDialogue: false,
+      filterIsVisible: true,
+      filterCandidate: false,
+      isSpinner: false,
+      editorState: EditorState.createEmpty()
+    }
+    this.changeView = this.changeView.bind(this)
+    this.orderRecord = this.orderRecord.bind(this)
+    this.renderData = this.renderData.bind(this)
+    this.onChecked = this.onChecked.bind(this)
+    this.show = this.show.bind(this)
+    this.hide = this.hide.bind(this)
+    this.renderJobDetails = this.renderJobDetails.bind(this)
+  }
+  componentDidMount () {
+    const { toggleTopbar } = this.props
+    toggleTopbar(true)
+  }
+  componentWillUnmount () {
+    const { toggleTopbar } = this.props
+    toggleTopbar(false)
+  }
+  changeView (view) {
+    this.setState({ view })
+  }
+  orderRecord (order) {
+    this.setState({ filter: order })
+  }
+  renderData () {
+    const { filter, filterCandidate } = this.state
+    let users
+    if (filterCandidate) {
+      let graphqlProfiles = this.props.client.readQuery({
+        query: userProfilesByFilter,
+        variables: {
+          where: this.getFilterWhereVariable('userProfilesByFilter')
+        }
+      })
+      users = graphqlProfiles.userProfilesByFilter.userProfiles
+      users = orderBy(users, j => {
+        moment(j.createdDate)
+      })
+      if (filter === 'Newest First') {
+        users = users.reverse()
+      }
+    }
+    return users
+  }
+  onChecked (status, id) {
+    const { items } = this.state
+    let newItems = []
+    if (status) {
+      newItems = [...items, id]
+    } else {
+      newItems = items.filter(item => item !== id)
+    }
+    this.setState({ items: newItems })
+  }
+  onCheckedGrid = (items) => {
+    this.setState({items})
+  }
+  show () {
+    this.setState({ showDialogue: true })
+  }
+  hide () {
+    this.setState({
+      showDialogue: false
+    })
+  }
+  renderJobDetails () {
+    const { graphqlJob } = this.props
+    if (graphqlJob.jobByID) {
+      const { jobByID } = graphqlJob
+      const id = jobByID.id
+      const jobTitle = jobByID.jobTitle
+      const postedOn = jobByID.createdDate
+      const deadline = jobByID.appliedBefore
+      const experience = jobByID.minExperience
+      return (
+        <div className="job-details">
+          <div className="job-details-title">
+            {jobTitle} ({id})
+          </div>
+          <div className="job-details-posted">Posted On: {postedOn}</div>
+          <div className="job-details-deadline">
+            Deadline to Apply: {deadline}
+          </div>
+          <div className="job-details-experience">
+            Experience Required: {experience} year(s)
+          </div>
+          <Button flat className="job-details-button">
+            View Full Details
+          </Button>
+        </div>
+      )
+    }
+  }
+  onFilter = where => {
+    const { client: { query }, setQueryVariables } = this.props
+    this.setState({ filterCandidate: false, isSpinner: true })
+    query({
+      query: userProfilesByFilter,
+      variables: { where }
+    }).then(() => {
+      setQueryVariables('userProfilesByFilter', where)
+      this.setState({ filterCandidate: true, isSpinner: false })
+    })
+  }
+  onContentStateChange = editorState => {
+    this.setState({ editorState })
+  }
+  renderCandidate = () => {
+    const { items, filterCandidate } = this.state
+    if (filterCandidate) {
+      const graphqlProfiles = this.props.client.readQuery({
+        query: userProfilesByFilter,
+        variables: {
+          where: this.getFilterWhereVariable('userProfilesByFilter')
+        }
+      })
+      const users = graphqlProfiles.userProfilesByFilter.userProfiles
+      return items.map(i => {
+        const candidate = users.find(u => u.userID === i)
+        return (
+          <div className="candidate-item" key={i}>
+            <div className="candidateItem__icon">
+              <img src={imageUrl} />
+            </div>
+            <div className="candidate-item-description">
+              <div className="fullName">{candidate.fullName}</div>
+              <div className="education">Sultan Qaboos University</div>
+              <div className="major">
+                Major: Human Resource Development, Software Development
+              </div>
+            </div>
+            <Button icon onClick={() => this.onChecked(false, i)}>
+              cancel
+            </Button>
+          </div>
+        )
+      })
+    }
+  }
+  getFilterWhereVariable = query => {
+    const { recruitment } = this.props
+    let variables = {}
+    if (recruitment && recruitment[query]) {
+      variables = recruitment[query]
+    }
+    return variables
+  }
+  sendInvitation = () => {
+    const {
+      match: { params: { id: jobID } },
+      insertJobSchedulingMutate,
+      insertJobSchedulingInteractionMutate,
+      graphqlJob
+    } = this.props
+    const { items } = this.state
+    const companyID = graphqlJob.jobByID.company.id
+    const input = items.map(userID => ({
+      jobID,
+      userID,
+      companyID,
+      currentInteractionStatus: 'application_CompanyInvitedUser'
+    }))
+    insertJobSchedulingMutate({
+      variables: { input }
+    }).then(res => {
+      if (!res.error) {
+        const items = res.data.insertJobSchedulings
+        const input = items.map(it => ({
+          jobSchedulingID: it.id,
+          status: 'application_CompanyInvitedUser',
+          emailHTMLMessage: this.renderHtmlForEditor()
+        }))
+        insertJobSchedulingInteractionMutate({
+          variables: {
+            input
+          }
+        }).then(res => {
+          this.hide()
+        })
+      }
+    })
+  }
+  renderHtmlForEditor = () => {
+    const { editorState } = this.state
+    return draftToHtml(convertToRaw(editorState.getCurrentContent()))
+  }
+  render () {
+    const {
+      view,
+      filter,
+      items,
+      showDialogue,
+      filterIsVisible,
+      filterCandidate,
+      isSpinner
+    } = this.state
+    const { history } = this.props
+    const switchView = ['Grid View', 'Cards View']
+    const filterView = ['Latest First', 'Newest First']
+    const actions = []
+    actions.push({ secondary: true, children: 'Cancel', onClick: this.hide })
+    actions.push(
+      <Button
+        flat
+        primary
+        onClick={() => this.sendInvitation()}
+        disabled={false}
+      >
+        Send
+      </Button>
+    )
+    return (
+      <div>
+        <div className="topBarContainer">
+          <Breadcrumb />
+          <div className="Top-Bar">
+            <Button
+              flat
+              className="topBarButton topBarButton__close"
+              onClick={() => history.push('/cadre/recruitment/allPositions')}
+            >
+              <i className="mdi mdi-close-circle" />
+              Close
+            </Button>
+            <Button
+              flat
+              className="topBarButton"
+              disabled={isEmpty(items)}
+              onClick={this.show}
+            >
+              <i className="mdi mdi-folder-upload" />
+              Send Invitation
+            </Button>
+          </div>
+        </div>
+        <div className="innerWapper">
+          <div
+            className={cx('container-collapsible', {
+              'filter-visible': filterIsVisible
+            })}
+          >
+            <Paper zDepth={0} className="manual-matching left-side" >
+              <div className="filterContainer cards">
+                <SelectField
+                  id="select-field-2"
+                  placeholder="Placeholder"
+                  className="md-cell"
+                  menuItems={filterView}
+                  onChange={this.orderRecord}
+                  value={filter}
+                />
+                <SelectField
+                  id="select-field-1"
+                  placeholder="Placeholder"
+                  className="md-cell"
+                  menuItems={switchView}
+                  onChange={this.changeView}
+                  value={view}
+                />
+              </div>
+              {isSpinner && <Spinner />}
+              {view === 'Grid View' &&
+                !isSpinner &&
+                filterCandidate && (
+                <DataGridMatching users={this.renderData()} onChecked={this.onCheckedGrid} selectedItems = {items} />
+              )}
+              {view === 'Cards View' &&
+                !isSpinner &&
+                filterCandidate && (
+                <CardsMatching
+                  users={this.renderData()}
+                  onChecked={this.onChecked}
+                  selectedItems = {items}
+                />
+              )}
+              <DialogContainer
+                id="simple-action-dialog"
+                visible={showDialogue}
+                onHide={this.hide}
+                actions={actions}
+                title="Send Invitation"
+                className="DialogForm"
+                modal={true}
+              >
+                <TabsContainer
+                  panelClassName="md-grid"
+                  colored
+                  slideHeightProp="minHeight"
+                >
+                  <Tabs tabId="simple-tab">
+                    <Tab label="Invitation Letter">
+                      {this.renderJobDetails()}
+                      <Editor
+                        toolbarClassName="toolbarClassName"
+                        wrapperClassName="wrapperClassName"
+                        editorClassName="editorClassName"
+                        onEditorStateChange={this.onContentStateChange}
+                      />
+                    </Tab>
+                    <Tab label={`Selected Candidates(${items.length})`}>
+                      {this.renderCandidate()}
+                    </Tab>
+                  </Tabs>
+                </TabsContainer>
+              </DialogContainer>
+            </Paper>
+            <Paper className="right-side">
+              <FilterContainer label="Filters" onFilter={this.onFilter} />
+              <Button
+                flat
+                className="filter-move-button"
+                onClick={() =>
+                  this.setState({ filterIsVisible: !filterIsVisible })
+                }
+              >
+                <FontIcon
+                  className={cls(
+                    'mdi',
+                    filterIsVisible
+                      ? 'mdi-chevron-double-right'
+                      : 'mdi-chevron-double-left'
+                  )}
+                />
+              </Button>
+            </Paper>
+          </div>
+          <Prompt
+            when={!isEmpty(items)}
+            message="Are you sure you want to leave? There are many profiles already selected"
+          />
+        </div>
+      </div>
+    )
+  }
+}
+export default ManualMatching
