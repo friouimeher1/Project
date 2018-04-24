@@ -1,0 +1,97 @@
+import React, { Component } from 'react'
+import { Chip, Button, Paper } from 'react-md'
+import { withRouter } from 'react-router-dom'
+import imageUrl from 'images/avatar.png'
+export default class CardsMatching extends Component {
+  constructor (props) {
+    super(props)
+    this.state = {}
+    this.renderCards = this.renderCards.bind(this)
+    this.onChecked = this.onChecked.bind(this)
+  }
+  onChecked (status, id) {
+    const { onChecked } = this.props
+    onChecked(status, id)
+  }
+  renderCards () {
+    const { users, selectedItems } = this.props
+    return users.map((item, index) => {
+      const checked = selectedItems.find(s => s === item.userID)
+      return <CardItem item={item} key={index} onChecked={this.onChecked} checked={!!checked} />
+    })
+  }
+  render () {
+    return <div className="cardView">{this.renderCards()}</div>
+  }
+}
+@withRouter
+class CardItem extends Component {
+  constructor (props) {
+    super(props)
+    this.checkItem = this.checkItem.bind(this)
+  }
+  checkItem (id) {
+    const { onChecked, checked } = this.props
+    onChecked(!checked, id)
+  }
+  viewProfile = userId => {
+    const { history, match: { params: { id } } } = this.props
+    history.push(
+      `/cadre/recruitment/allPositions/manual-matching/${id}/${userId}`
+    )
+  }
+  render () {
+    const { item, checked } = this.props
+    return (
+      <Paper
+        zDepth={0}
+        className={`cardItems ${
+          checked ? 'cardItems--checked md-paper--2' : ''
+        }`}
+        onClick={() => this.checkItem(item.userID)}
+        raiseOnHover
+      >
+        <div className="checkButton" />
+        <div className="cardItems__header">
+          <div className="cardItems__avatar">
+            <div className="cardItems__img">
+              <img src={imageUrl} />
+            </div>
+          </div>
+          <div className="cardItems__Info">
+            <div className="cardItems__Name">{item.fullName}</div>
+            <div className="cardItems__JobTitle">PHP developer</div>
+            <div className="cardItems__Dgree">PHD</div>
+          </div>
+          <div className="cardItems__Invited">Invited</div>
+        </div>
+        <div className="cardItems__article">
+          <span className="cardItems__details">
+            <i className="mdi mdi-wallet-travel" />
+            7-8 yrs
+          </span>
+          <span className="cardItems__details">
+            <i className="mdi mdi-map-marker" />
+            Muscat, Oman
+          </span>
+        </div>
+        <div className="cardItems__article">
+          <span>Keyskills</span>
+          <Chip label="Recruitment" />
+          <Chip label="Staffing" />
+          <Chip label="Human Resource" />
+        </div>
+        <div className="cardItems__footer">
+          <div className="cardItems__posted">Posted 1 day ago</div>
+          <Button
+            flat
+            className="cardItems__button"
+            onClick={() => this.viewProfile(item.userID)}
+          >
+            VIEW PROFILE
+          </Button>
+        </div>
+      </Paper>
+    )
+  }
+}
